@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SPACE — Spatial Conversation · Telegram</title>
+<style>
+:root {
+  --bg: #08090c;
+  --bg-elev: #0f1319;
+  --border: #1c2330;
+  --border-hi: #2a3547;
+  --text: #d4dde8;
+  --text-dim: #5a6878;
+  --text-mute: #3a4452;
+  --accent: #5aa4ff;
+  --accent-dim: #2a5a9a;
+  --grid: #10151c;
+  --grid-hi: #161d27;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: 'Inter', 'SF Pro', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+#viewport {
+  position: absolute; inset: 0;
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 0),
+    radial-gradient(circle at 1px 1px, var(--grid-hi) 1px, transparent 0);
+  background-size: 40px 40px, 200px 200px;
+  background-position: 0 0, 0 0;
+  cursor: default;
+}
+#world {
+  position: absolute;
+  top: 0; left: 0;
+  width: 50000px; height: 50000px;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+#edges {
+  position: absolute;
+  top: 0; left: 0;
+  width: 1px; height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+#nodes { position: absolute; top: 0; left: 0; }
+
+.node {
+  position: absolute;
+  width: 280px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px 10px;
+  cursor: grab;
+  transition: border-color .15s, box-shadow .2s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.node:hover {
+  border-color: var(--border-hi);
+  box-shadow: 0 0 0 1px rgba(90,164,255,0.08), 0 12px 32px rgba(0,0,0,0.35);
+}
+.node.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 32px rgba(90,164,255,0.15), 0 12px 32px rgba(0,0,0,0.4);
+}
+.node.dragging {
+  cursor: grabbing;
+  box-shadow: 0 0 0 1px var(--accent), 0 20px 48px rgba(0,0,0,0.6);
+  z-index: 100;
+}
+.node-user { background: linear-gradient(150deg, #1b2838 0%, #131c28 100%); }
+.node-ai   { background: linear-gradient(150deg, #0f1720 0%, #0a1018 100%); }
+.node.tg    { border-left: 2px solid #229ed9; }
+.node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-mute);
+  margin-bottom: 7px;
+  font-weight: 600;
+}
+.node-user .node-role { color: #7ba8e8; }
+.node-ai   .node-role { color: #6a8aaa; }
+.node.tg   .node-role { color: #229ed9; }
+.node-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 18px;
+}
+.node-ai .node-body:empty::after {
+  content: "▍";
+  color: var(--accent);
+  animation: blink 1s infinite;
+}
+@keyframes blink { 50% { opacity: 0.3; } }
+.node-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 9px;
+  opacity: 0;
+  transition: opacity .15s;
+  pointer-events: none;
+}
+.node:hover .node-actions,
+.node.selected .node-actions { opacity: 1; pointer-events: auto; }
+.node-actions button {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .12s;
+}
+.node-actions button:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+.node-actions button.del:hover {
+  background: #5a1a1a;
+  border-color: #a03a3a;
+}
+
+#topbar {
+  position: absolute;
+  top: 16px; left: 16px; right: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+  pointer-events: auto;
+}
+.brand .logo {
+  color: var(--accent);
+  font-size: 16px;
+  filter: drop-shadow(0 0 8px rgba(90,164,255,0.5));
+}
+#top-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: auto;
+}
+#tg-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(8,9,12,0.7);
+  border: 1px solid var(--border);
+  padding: 7px 12px;
+  border-radius: 100px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  cursor: default;
+}
+#tg-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #555;
+  transition: background .2s, box-shadow .2s;
+}
+#tg-dot.online  { background: #4ade80; box-shadow: 0 0 8px rgba(74,222,128,.6); }
+#tg-dot.offline { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,.5); }
+#tg-dot.waiting { background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,.5); }
+#ctx-ring {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(8,9,12,0.7);
+  border: 1px solid var(--border);
+  padding: 6px 12px 6px 6px;
+  border-radius: 100px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+#ctx-ring svg { width: 28px; height: 28px; }
+#ctx-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+  min-width: 30px;
+}
+
+#input-bar {
+  position: absolute;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 48px));
+  display: flex;
+  gap: 8px;
+  background: rgba(15,19,25,0.92);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 8px 8px 8px 18px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 12px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02) inset;
+  z-index: 10;
+}
+#input-bar:focus-within {
+  border-color: var(--accent-dim);
+  box-shadow: 0 12px 48px rgba(0,0,0,0.5), 0 0 24px rgba(90,164,255,0.1);
+}
+#msg-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+#msg-input::placeholder { color: var(--text-mute); }
+#send-btn {
+  background: var(--accent);
+  border: none;
+  color: #000;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .12s, transform .08s;
+}
+#send-btn:hover { background: #6eb4ff; }
+#send-btn:active { transform: scale(0.94); }
+#send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#cmd-panel {
+  position: absolute;
+  top: 20%; left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100vw - 48px));
+  background: rgba(15,19,25,0.96);
+  border: 1px solid var(--border-hi);
+  border-radius: 14px;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.7);
+  z-index: 100;
+}
+#cmd-panel.hidden { display: none; }
+#cmd-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+  color: var(--text);
+  padding: 14px 18px;
+  font-size: 14px;
+  font-family: inherit;
+}
+#cmd-list { max-height: 320px; overflow-y: auto; }
+.cmd-item {
+  padding: 10px 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.cmd-item:hover, .cmd-item.active {
+  background: rgba(90,164,255,0.08);
+  color: var(--text);
+}
+.cmd-item .hint {
+  font-size: 10px;
+  color: var(--text-mute);
+  font-family: monospace;
+}
+
+#empty-hint {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text-mute);
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  z-index: 5;
+}
+#empty-hint .big {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+#empty-hint kbd {
+  background: var(--border);
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+}
+#empty-hint.hidden { display: none; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div id="viewport">
+  <div id="world">
+    <svg id="edges"></svg>
+    <div id="nodes"></div>
+  </div>
+</div>
+
+<div id="topbar">
+  <div class="brand"><span class="logo">◈</span><span>SPACE</span></div>
+  <div id="top-right">
+    <div id="tg-status" title="Telegram bot">
+      <span id="tg-dot"></span>
+      <span id="tg-text">CONNECTING</span>
+    </div>
+    <div id="ctx-ring">
+      <svg viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="15" fill="none" stroke="var(--border)" stroke-width="3"/>
+        <circle id="ctx-fill" cx="20" cy="20" r="15" fill="none" stroke="var(--accent)"
+                stroke-width="3" stroke-dasharray="94.25" stroke-dashoffset="94.25"
+                stroke-linecap="round" transform="rotate(-90 20 20)"
+                style="transition: stroke-dashoffset .3s, stroke .3s"/>
+      </svg>
+      <span id="ctx-label">0%</span>
+    </div>
+  </div>
+</div>
+
+<div id="empty-hint">
+  <div class="big">空间对话</div>
+  <div>向 bot 发消息，或在此输入 · <kbd>Ctrl</kbd> + <kbd>K</kbd> 命令面板</div>
+</div>
+
+<div id="input-bar">
+  <input id="msg-input" type="text" placeholder="以 bot 身份发送…" autofocus autocomplete="off" spellcheck="false"/>
+  <button id="send-btn" title="发送">→</button>
+</div>
+
+<div id="cmd-panel" class="hidden">
+  <input id="cmd-input" type="text" placeholder="输入命令…" autocomplete="off" spellcheck="false"/>
+  <div id="cmd-list"></div>
+</div>
+
+<script>
+'use strict';
+
+// ============================================================
+// TELEGRAM CONFIG
+// ============================================================
+const TG = {
+  token: '8996030353:AAFIvycsQB-KdNQln2eoYciZ8yi19PL4rZU',
+  api: 'https://api.telegram.org/bot',
+  offset: Number(localStorage.getItem('space_tg_offset') || 0),
+  chatId: localStorage.getItem('space_tg_chat') || null,
+  polling: false,
+  connected: false,
+  lastError: null,
+};
+
+async function tgCall(method, params) {
+  const res = await fetch(`${TG.api}${TG.token}/${method}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params || {}),
+  });
+  let j;
+  try { j = await res.json(); }
+  catch { throw new Error('telegram: bad response ' + res.status); }
+  if (!j.ok) throw new Error(j.description || 'telegram error');
+  return j.result;
+}
+
+function setStatus(state, detail) {
+  const dot = document.getElementById('tg-dot');
+  const txt = document.getElementById('tg-text');
+  const box = document.getElementById('tg-status');
+  dot.className = '';
+  if (state === 'online')  { dot.classList.add('online');  txt.textContent = TG.chatId ? 'LINKED' : 'ONLINE'; }
+  if (state === 'waiting') { dot.classList.add('waiting'); txt.textContent = 'AWAITING'; }
+  if (state === 'offline') { dot.classList.add('offline'); txt.textContent = 'OFFLINE'; }
+  box.title = detail ? String(detail) : 'Telegram bot';
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  nodes: new Map(),
+  edges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+  selectedId: null,
+  contextLimit: 200000,
+  contextUsed: 0,
+  pendingParent: null,
+  dragging: null,
+  panning: null,
+  streaming: false,
+};
+
+const viewport = document.getElementById('viewport');
+const world    = document.getElementById('world');
+const nodesEl  = document.getElementById('nodes');
+const edgesEl  = document.getElementById('edges');
+const inputEl  = document.getElementById('msg-input');
+const sendBtn  = document.getElementById('send-btn');
+const emptyHint= document.getElementById('empty-hint');
+const cmdPanel = document.getElementById('cmd-panel');
+const cmdInput = document.getElementById('cmd-input');
+const cmdList  = document.getElementById('cmd-list');
+const ctxFill  = document.getElementById('ctx-fill');
+const ctxLabel = document.getElementById('ctx-label');
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  world.style.transform =
+    `translate(${state.viewport.x}px, ${state.viewport.y}px) scale(${state.viewport.zoom})`;
+  viewport.style.backgroundPosition =
+    `${state.viewport.x}px ${state.viewport.y}px, ${state.viewport.x * 0.5}px ${state.viewport.y * 0.5}px`;
+  drawEdges();
+}
+
+function getRect(node) {
+  const el = nodesEl.querySelector(`[data-id="${node.id}"]`);
+  if (!el) return { x: node.x, y: node.y, w: 280, h: 80 };
+  return { x: node.x, y: node.y, w: el.offsetWidth, h: el.offsetHeight };
+}
+
+function drawEdges() {
+  while (edgesEl.firstChild) edgesEl.removeChild(edgesEl.firstChild);
+  const NS = 'http://www.w3.org/2000/svg';
+  for (const e of state.edges) {
+    const a = state.nodes.get(e.from);
+    const b = state.nodes.get(e.to);
+    if (!a || !b) continue;
+    const ra = getRect(a), rb = getRect(b);
+    const x1 = ra.x + ra.w, y1 = ra.y + ra.h / 2;
+    const x2 = rb.x,        y2 = rb.y + rb.h / 2;
+    const dx = Math.max(40, (x2 - x1) * 0.6);
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'rgba(90,164,255,0.22)');
+    path.setAttribute('stroke-width', '1.5');
+    edgesEl.appendChild(path);
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', (x1 + x2) / 2);
+    dot.setAttribute('cy', (y1 + y2) / 2);
+    dot.setAttribute('r', 2.5);
+    dot.setAttribute('fill', 'rgba(90,164,255,0.35)');
+    edgesEl.appendChild(dot);
+  }
+}
+
+// ============================================================
+// NODES
+// ============================================================
+let nodeCounter = 0;
+
+function createNode(role, text, parent, opts) {
+  const o = opts || {};
+  const id = 'n' + (++nodeCounter) + '_' + Date.now().toString(36).slice(-4);
+  const node = {
+    id, role, text,
+    parentId: parent ? parent.id : null,
+    children: [],
+    x: 0, y: 0,
+    createdAt: Date.now(),
+    tg: !!o.tg,
+    sender: o.sender || null,
+  };
+  state.nodes.set(id, node);
+  if (parent) {
+    parent.children.push(id);
+    state.edges.push({ from: parent.id, to: id });
+  }
+  buildNodeEl(node);
+  return node;
+}
+
+function buildNodeEl(node) {
+  const el = document.createElement('div');
+  el.className = `node node-${node.role}` + (node.tg ? ' tg' : '');
+  el.dataset.id = node.id;
+  el.style.left = node.x + 'px';
+  el.style.top = node.y + 'px';
+  const label = node.role === 'user'
+    ? (node.tg ? (node.sender || 'TG') : 'YOU')
+    : 'AI';
+  el.innerHTML = `
+    <div class="node-header">
+      <span class="node-role">${escapeHtml(label)}</span>
+      <span class="node-time">${fmtTime(node.createdAt)}</span>
+    </div>
+    <div class="node-body"></div>
+    <div class="node-actions">
+      <button data-act="branch" title="从这里分支">⑂</button>
+      <button data-act="del" class="del" title="删除">×</button>
+    </div>`;
+  el.querySelector('.node-body').textContent = node.text;
+  nodesEl.appendChild(el);
+  return el;
+}
+
+function updateNodeEl(node) {
+  const el = nodesEl.querySelector(`[data-id="${node.id}"]`);
+  if (!el) return;
+  el.style.left = node.x + 'px';
+  el.style.top = node.y + 'px';
+  el.querySelector('.node-body').textContent = node.text;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+// ============================================================
+// LAYOUT
+// ============================================================
+const CHILD_DX = 340;
+const CHILD_DY = 110;
+
+function layoutChildren(parent) {
+  const n = parent.children.length;
+  if (n === 0) return;
+  const totalH = (n - 1) * CHILD_DY;
+  parent.children.forEach((cid, i) => {
+    const child = state.nodes.get(cid);
+    if (!child) return;
+    const targetX = parent.x + CHILD_DX;
+    const targetY = parent.y - totalH / 2 + i * CHILD_DY;
+    moveSubtree(child, targetX - child.x, targetY - child.y);
+    layoutChildren(child);
+  });
+}
+
+function moveSubtree(node, dx, dy) {
+  node.x += dx; node.y += dy;
+  updateNodeEl(node);
+  node.children.forEach(cid => moveSubtree(state.nodes.get(cid), dx, dy));
+}
+
+function placeRoot(node) { node.x = 0; node.y = 0; updateNodeEl(node); }
+
+// ============================================================
+// CHAT FLOW — 本地发送（以 bot 身份）
+// ============================================================
+function send() {
+  const text = inputEl.value.trim();
+  if (!text || state.streaming) return;
+  inputEl.value = '';
+  hideEmpty();
+  hideCmd();
+
+  let parent = null;
+  if (state.pendingParent && state.nodes.has(state.pendingParent)) {
+    parent = state.nodes.get(state.pendingParent);
+  } else {
+    parent = findLatestAiLeaf();
+  }
+  state.pendingParent = null;
+
+  // 本地显示为用户侧（输入框内容）
+  const userNode = createNode('user', text, parent);
+  if (!parent) placeRoot(userNode);
+  else layoutChildren(parent);
+  ensureVisible(userNode);
+
+  const aiNode = createNode('ai', '', userNode);
+  layoutChildren(userNode);
+  ensureVisible(aiNode);
+
+  // 以 bot 身份发送到 Telegram 绑定聊天
+  deliverToTelegram(text);
+
+  streamResponse(aiNode, text, null);
+}
+
+async function deliverToTelegram(text) {
+  if (!TG.chatId) {
+    setStatus(TG.connected ? 'waiting' : 'offline', 'no chat yet — message the bot first');
+    return;
+  }
+  try {
+    await tgCall('sendMessage', { chat_id: TG.chatId, text });
+  } catch (e) {
+    setStatus('offline', e.message);
+  }
+}
+
+function findLatestAiLeaf() {
+  let latest = null;
+  for (const n of state.nodes.values()) {
+    if (n.role !== 'ai') continue;
+    if (n.children.length > 0) continue;
+    if (!latest || n.createdAt > latest.createdAt) latest = n;
+  }
+  return latest;
+}
+
+function streamResponse(aiNode, prompt, onDone) {
+  state.streaming = true;
+  sendBtn.disabled = true;
+  const full = generateResponse(prompt);
+  let i = 0;
+  const tick = () => {
+    if (i >= full.length) {
+      state.streaming = false;
+      sendBtn.disabled = false;
+      state.contextUsed = Math.min(state.contextLimit, state.contextUsed + estimateTokens(full));
+      updateCtxRing();
+      inputEl.focus();
+      if (onDone) onDone(full);
+      return;
+    }
+    i = Math.min(full.length, i + 1 + Math.floor(Math.random() * 3));
+    aiNode.text = full.slice(0, i);
+    updateNodeEl(aiNode);
+    drawEdges();
+    state.contextUsed = Math.min(state.contextLimit, state.contextUsed + 1);
+    updateCtxRing();
+    ensureVisible(aiNode, true);
+    setTimeout(tick, 14 + Math.random() * 20);
+  };
+  tick();
+}
+
+function estimateTokens(s) { return Math.ceil(s.length / 3.8); }
+
+// ============================================================
+// 回复脑 — 关键词分流
+// ============================================================
+function generateResponse(prompt) {
+  const p = String(prompt).toLowerCase();
+  if (/\/start|\/help|start/.test(p) && p.length < 12) {
+    return `在。\n\n直接发消息就行。我能聊代码、设计、原理，也能接你问的任何话题。\n\nSPACE 页面里可以看到每条消息成为空间节点，分支可追溯。`;
+  }
+  if (/code|代码|script|函数|function|写/.test(p)) {
+    return `下面是一个可直接跑的最小实现。\n\n` +
+`interface Result<T> { ok: true; value: T } | { ok: false; error: string }\n\n` +
+`function run<T>(fn: () => T): Result<T> {\n  try { return { ok: true, value: fn() } }\n  catch (e) { return { ok: false, error: String(e) } }\n}\n\n` +
+`错误变成值，调用方必须显式处理。`;
+  }
+  if (/why|为什么|原理|how|如何/.test(p)) {
+    return `拆三层看：\n\n` +
+`1. 表层 — 直接观察到的现象。\n` +
+`2. 机制层 — 现象背后的因果链，跨 2-3 个抽象层。\n` +
+`3. 约束层 — 决定机制边界的物理或逻辑限制。\n\n` +
+`多数困惑来自只在表层找答案。往下走一层，问题往往自己消解。`;
+  }
+  if (/design|设计|界面|ui|ux/.test(p)) {
+    return `从约束反向推：\n\n` +
+`• 停留时间越短，信息密度越该高。\n` +
+`• 需要回看的地方用空间位置而非序号承载记忆。\n` +
+`• 任何用户要记住的中间状态都该成为可见对象。\n\n` +
+`所以画布式比流式更适合多分支探索——节点本身就是记忆锚点。`;
+  }
+  if (/hello|你好|hi|hey|嗨/.test(p)) {
+    return `在。\n\n消息已经在 SPACE 画布上长成节点了。可以拖动、缩放、点 ⑂ 分支。\n\n想聊什么？`;
+  }
+  if (/telegram|tg|机器人|bot/.test(p)) {
+    return `这个 bot 的收发都在这页面上跑：\n\n` +
+`• getUpdates 长轮询接消息\n` +
+`• sendMessage 回消息\n` +
+`• chat_id 在第一条消息进来时绑定\n\n` +
+`页面关掉 bot 就停了——逻辑就在客户端。`;
+  }
+  return `拆开看有三层：\n\n` +
+`表面 — 你正在问的东西，直接可观察。\n` +
+`中间 — 让它成立的机制，藏在下一层。\n` +
+`底层 — 决定机制边界的约束，改它才真正改变结果。\n\n` +
+`有价值的判断通常在中间和底层之间。`;
+}
+
+// ============================================================
+// TELEGRAM 接收
+// ============================================================
+function handleUpdate(u) {
+  const msg = u.message;
+  if (!msg) return;
+  if (!msg.text) return;
+
+  const chatId = String(msg.chat.id);
+  if (TG.chatId !== chatId) {
+    TG.chatId = chatId;
+    localStorage.setItem('space_tg_chat', chatId);
+    setStatus('online', 'chat linked: ' + chatId);
+  }
+  TG.offset = u.update_id + 1;
+  localStorage.setItem('space_tg_offset', TG.offset);
+
+  const sender = [msg.from && msg.from.first_name, msg.from && msg.from.last_name]
+    .filter(Boolean).join(' ') || (msg.from && msg.from.username) || 'TG';
+  const text = msg.text;
+
+  hideEmpty();
+
+  const parent = findLatestAiLeaf();
+  const userNode = createNode('user', text, parent, { tg: true, sender });
+  if (!parent) placeRoot(userNode);
+  else layoutChildren(parent);
+  ensureVisible(userNode);
+
+  const aiNode = createNode('ai', '', userNode);
+  layoutChildren(userNode);
+  ensureVisible(aiNode);
+
+  streamResponse(aiNode, text, (full) => {
+    // 回复到 Telegram
+    tgCall('sendMessage', { chat_id: TG.chatId, text: full })
+      .catch(e => setStatus('offline', e.message));
+  });
+}
+
+async function pollLoop() {
+  TG.polling = true;
+  while (TG.polling) {
+    try {
+      const updates = await tgCall('getUpdates', {
+        offset: TG.offset,
+        timeout: 25,
+        allowed_updates: ['message'],
+      });
+      TG.connected = true;
+      setStatus(TG.chatId ? 'online' : 'waiting',
+                TG.chatId ? ('chat ' + TG.chatId) : 'message the bot to link');
+      for (const u of updates) handleUpdate(u);
+    } catch (e) {
+      TG.connected = false;
+      TG.lastError = e.message;
+      setStatus('offline', e.message);
+      await sleep(4000);
+    }
+  }
+}
+
+// ============================================================
+// VIEWPORT
+// ============================================================
+viewport.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  const nz = Math.max(0.2, Math.min(3, state.viewport.zoom * factor));
+  const rect = viewport.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  state.viewport.x = mx - (mx - state.viewport.x) * (nz / state.viewport.zoom);
+  state.viewport.y = my - (my - state.viewport.y) * (nz / state.viewport.zoom);
+  state.viewport.zoom = nz;
+  render();
+}, { passive: false });
+
+viewport.addEventListener('mousedown', (e) => {
+  if (e.target.closest('.node')) return;
+  if (e.target.closest('#input-bar')) return;
+  state.panning = {
+    startX: e.clientX - state.viewport.x,
+    startY: e.clientY - state.viewport.y,
+  };
+  viewport.style.cursor = 'grabbing';
+  if (e.button === 1) e.preventDefault();
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (state.panning) {
+    state.viewport.x = e.clientX - state.panning.startX;
+    state.viewport.y = e.clientY - state.panning.startY;
+    render();
+    return;
+  }
+  if (state.dragging) {
+    const d = state.dragging;
+    const dx = (e.clientX - d.startX) / state.viewport.zoom;
+    const dy = (e.clientY - d.startY) / state.viewport.zoom;
+    const node = state.nodes.get(d.id);
+    node.x = d.ox + dx;
+    node.y = d.oy + dy;
+    updateNodeEl(node);
+    drawEdges();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (state.panning) { state.panning = null; viewport.style.cursor = ''; }
+  if (state.dragging) { state.dragging.el.classList.remove('dragging'); state.dragging = null; }
+});
+
+nodesEl.addEventListener('mousedown', (e) => {
+  const nodeEl = e.target.closest('.node');
+  if (!nodeEl) return;
+  if (e.target.closest('button')) return;
+  e.stopPropagation();
+  const id = nodeEl.dataset.id;
+  const node = state.nodes.get(id);
+  selectNode(id);
+  state.dragging = {
+    id, el: nodeEl,
+    startX: e.clientX, startY: e.clientY,
+    ox: node.x, oy: node.y,
+  };
+  nodeEl.classList.add('dragging');
+});
+
+nodesEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  e.stopPropagation();
+  const id = btn.closest('.node').dataset.id;
+  const act = btn.dataset.act;
+  if (act === 'branch') {
+    state.pendingParent = id;
+    selectNode(id);
+    inputEl.focus();
+  } else if (act === 'del') {
+    deleteSubtree(id);
+  }
+});
+
+function selectNode(id) {
+  if (state.selectedId) {
+    const prev = nodesEl.querySelector(`[data-id="${state.selectedId}"]`);
+    if (prev) prev.classList.remove('selected');
+  }
+  state.selectedId = id;
+  if (id) {
+    const el = nodesEl.querySelector(`[data-id="${id}"]`);
+    if (el) el.classList.add('selected');
+  }
+}
+
+function deleteSubtree(id) {
+  const node = state.nodes.get(id);
+  if (!node) return;
+  const toDelete = [];
+  collectSubtree(id, toDelete);
+  if (node.parentId) {
+    const p = state.nodes.get(node.parentId);
+    if (p) p.children = p.children.filter(c => c !== id);
+  }
+  for (const did of toDelete) {
+    const el = nodesEl.querySelector(`[data-id="${did}"]`);
+    if (el) el.remove();
+    state.nodes.delete(did);
+  }
+  state.edges = state.edges.filter(e => state.nodes.has(e.from) && state.nodes.has(e.to));
+  if (node.parentId) {
+    const p = state.nodes.get(node.parentId);
+    if (p) layoutChildren(p);
+  }
+  if (state.selectedId === id) state.selectedId = null;
+  drawEdges();
+  if (state.nodes.size === 0) showEmpty();
+}
+
+function collectSubtree(id, out) {
+  out.push(id);
+  const node = state.nodes.get(id);
+  if (!node) return;
+  node.children.forEach(c => collectSubtree(c, out));
+}
+
+// ============================================================
+// AUTO-VIEW
+// ============================================================
+function ensureVisible(node, soft) {
+  const rect = getRect(node);
+  const sx = rect.x * state.viewport.zoom + state.viewport.x;
+  const sy = rect.y * state.viewport.zoom + state.viewport.y;
+  const w = rect.w * state.viewport.zoom;
+  const h = rect.h * state.viewport.zoom;
+  const pad = 80;
+  const W = window.innerWidth, H = window.innerHeight;
+  let dx = 0, dy = 0;
+  if (sx + w > W - pad) dx = W - pad - (sx + w);
+  if (sx < pad) dx = pad - sx;
+  if (sy + h > H - pad - 80) dy = H - pad - 80 - (sy + h);
+  if (sy < pad + 60) dy = pad + 60 - sy;
+  if (dx === 0 && dy === 0) return;
+  const k = soft ? 0.35 : 1;
+  state.viewport.x += dx * k;
+  state.viewport.y += dy * k;
+  render();
+}
+
+// ============================================================
+// CONTEXT RING
+// ============================================================
+function updateCtxRing() {
+  const pct = Math.min(1, state.contextUsed / state.contextLimit);
+  const circ = 2 * Math.PI * 15;
+  ctxFill.setAttribute('stroke-dashoffset', circ * (1 - pct));
+  ctxLabel.textContent = Math.round(pct * 100) + '%';
+  if (pct > 0.85) ctxFill.setAttribute('stroke', '#ff5a5a');
+  else if (pct > 0.6) ctxFill.setAttribute('stroke', '#ffb85a');
+  else ctxFill.setAttribute('stroke', 'var(--accent)');
+}
+
+function hideEmpty() { emptyHint.classList.add('hidden'); }
+function showEmpty() { emptyHint.classList.remove('hidden'); }
+
+// ============================================================
+// COMMAND PANEL
+// ============================================================
+const COMMANDS = [
+  { id: 'new',    label: '新建根对话',       hint: 'clear' },
+  { id: 'focus',  label: '聚焦最新节点',     hint: 'F' },
+  { id: 'reset',  label: '重置视图',         hint: '0' },
+  { id: 'relink', label: '重新绑定 Telegram 聊天', hint: 'T' },
+  { id: 'export', label: '导出为 JSON',      hint: 'E' },
+  { id: 'help',   label: '帮助',             hint: '?' },
+];
+
+let cmdActive = 0;
+let cmdFiltered = COMMANDS.slice();
+
+function openCmd() {
+  cmdPanel.classList.remove('hidden');
+  cmdInput.value = '';
+  cmdInput.focus();
+  cmdActive = 0;
+  filterCmd('');
+}
+function hideCmd() { cmdPanel.classList.add('hidden'); cmdInput.blur(); }
+function filterCmd(q) {
+  const lq = q.toLowerCase();
+  cmdFiltered = COMMANDS.filter(c => c.label.toLowerCase().includes(lq) || c.id.includes(lq));
+  cmdActive = 0;
+  renderCmdList();
+}
+function renderCmdList() {
+  cmdList.innerHTML = '';
+  if (cmdFiltered.length === 0) {
+    const d = document.createElement('div');
+    d.className = 'cmd-item';
+    d.textContent = '无匹配命令';
+    cmdList.appendChild(d);
+    return;
+  }
+  cmdFiltered.forEach((c, i) => {
+    const d = document.createElement('div');
+    d.className = 'cmd-item' + (i === cmdActive ? ' active' : '');
+    d.innerHTML = `<span>${c.label}</span><span class="hint">${c.hint}</span>`;
+    d.addEventListener('click', () => runCmd(c.id));
+    cmdList.appendChild(d);
+  });
+}
+
+cmdInput.addEventListener('input', () => filterCmd(cmdInput.value));
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdActive = Math.min(cmdFiltered.length - 1, cmdActive + 1); renderCmdList(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); cmdActive = Math.max(0, cmdActive - 1); renderCmdList(); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (cmdFiltered[cmdActive]) runCmd(cmdFiltered[cmdActive].id); }
+  else if (e.key === 'Escape') { hideCmd(); }
+});
+
+function runCmd(id) {
+  hideCmd();
+  switch (id) {
+    case 'new': {
+      for (const el of nodesEl.querySelectorAll('.node')) el.remove();
+      state.nodes.clear();
+      state.edges = [];
+      state.selectedId = null;
+      state.pendingParent = null;
+      state.contextUsed = 0;
+      updateCtxRing();
+      drawEdges();
+      showEmpty();
+      state.viewport = { x: window.innerWidth / 2 - 140, y: window.innerHeight / 2 - 50, zoom: 1 };
+      render();
+      break;
+    }
+    case 'focus': {
+      const latest = findLatestAiLeaf();
+      if (latest) { selectNode(latest.id); ensureVisible(latest); }
+      break;
+    }
+    case 'reset': {
+      state.viewport = { x: 0, y: 0, zoom: 1 };
+      const first = state.nodes.values().next().value;
+      if (first) {
+        state.viewport.x = window.innerWidth / 2 - (first.x + 140);
+        state.viewport.y = window.innerHeight / 2 - (first.y + 50);
+      }
+      render();
+      break;
+    }
+    case 'relink': {
+      TG.chatId = null;
+      localStorage.removeItem('space_tg_chat');
+      TG.offset = 0;
+      localStorage.removeItem('space_tg_offset');
+      setStatus(TG.connected ? 'waiting' : 'offline', 'unlinked — message the bot to relink');
+      break;
+    }
+    case 'export': {
+      const data = {
+        nodes: Array.from(state.nodes.values()),
+        edges: state.edges,
+        viewport: state.viewport,
+        telegram: { chatId: TG.chatId, offset: TG.offset },
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'space-conversation.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      break;
+    }
+    case 'help': {
+      alert(
+        'SPACE + Telegram\n\n' +
+        '· 在 Telegram 给 bot 发消息 → 成为节点，自动回复\n' +
+        '· 页面输入框 → 以 bot 身份发到绑定的聊天\n' +
+        '· 点击节点 → 下一条消息从它分支\n' +
+        '· 拖拽平移 / 滚轮缩放 / Ctrl+K 命令\n' +
+        '· 状态灯：绿=在线，黄=等待首条消息，红=断开'
+      );
+      break;
+    }
+  }
+}
+
+// ============================================================
+// KEYBOARD
+// ============================================================
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'k' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openCmd(); return; }
+  if (e.key === 'Escape') { hideCmd(); inputEl.blur(); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedId && !e.target.closest('input')) {
+    deleteSubtree(state.selectedId);
+  }
+});
+
+sendBtn.addEventListener('click', send);
+inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  state.viewport = { x: window.innerWidth / 2 - 140, y: window.innerHeight / 2 - 50, zoom: 1 };
+  render();
+  updateCtxRing();
+  inputEl.focus();
+  setStatus('waiting', 'connecting to telegram…');
+  pollLoop();
+}
+
+window.addEventListener('resize', render);
+init();
+</script>
+</body>
+</html>
